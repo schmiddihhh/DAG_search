@@ -1499,7 +1499,7 @@ def is_pickleable(x:object) -> bool:
     except (pickle.PicklingError, AttributeError):
         return False
 
-def exhaustive_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, n_calc_nodes:int = 1, n_processes:int = 1, topk:int = 5, verbose:int = 0, opt_mode:str = 'grid', max_orders:int = 10000, max_time:float = 900.0, stop_thresh:float = -1.0, unique_loss:bool = True, expect_evals:int = None, pareto:bool = False, order_gen:callable = get_build_orders, **params) -> dict:
+def exhaustive_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, n_calc_nodes:int = 1, n_processes:int = 1, topk:int = 5, verbose:int = 0, opt_mode:str = 'grid', max_orders:int = 10000, max_time:float = 900.0, stop_thresh:float = -1.0, unique_loss:bool = True, expect_evals:int = None, pareto:bool = False, order_gen:callable = get_build_orders, **params) -> dict:   # FRAGE: als order_gen ist get_build_orders festgelegt, in get_build_orders ist max_orders im Default auf 10000 gesetzt -> potenziell keine ausschöpfende Suche, oder?
     '''
     Exhaustive search for a DAG.
 
@@ -2177,13 +2177,18 @@ class DAGRegressor(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
             y... output data (shape n_samples)
             processes... number of processes for evaluation
         '''
+
+        # y must be 1-dimensional
         assert len(y.shape) == 1, f'y must be 1-dimensional (current shape: {y.shape})'
 
+        # check if all X values are positive
         self.positives = np.all(X > 0, axis = 0)
 
+        # use seed (if given) for reproducibility
         if self.random_state is not None:
             np.random.seed(self.random_state)
 
+        # if there are more samples than allowed: choose a subset having the given maximum size
         if (self.max_samples is not None) and (len(X) > self.max_samples):
             sub_idx = np.arange(len(X))
             np.random.shuffle(sub_idx)
@@ -2194,9 +2199,10 @@ class DAGRegressor(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
             X_sub = X
             y_sub = y
 
+        # prepare a dict with all parameters for the search
         y_part = y_sub.reshape(-1, 1)
         m = X_sub.shape[1]
-        n = 1
+        n = 1   # number of outputs in the DAG
         loss_fkt = self.loss_fkt(y_part)
         if self.use_tan:
             opt_mode = 'grid_zoom_tan'
@@ -2217,6 +2223,8 @@ class DAGRegressor(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
             'max_time' : self.max_time,
             'pareto' : self.pareto
         }
+
+        # find the top k DAGs
         if self.mode == 'hierarchical':
             res = hierarchical_search(**params)
         else:

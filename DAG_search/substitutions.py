@@ -179,7 +179,7 @@ def elimination_loop(X, y, score_fkt, nodes_elim = 1, verbose = 0, only_improve 
 
     losses = [score_fkt(X, y)]
     invalid = False
-    while (X_all.shape[1] >= 3) and (not invalid):
+    while (X_all.shape[1] >= 3) and (not invalid):  # FRAGE: Warum shape >= 3 und nicht >= 2 ?
         # at least 2 (X) + 1 (y)
         params = {
             'X' : X_all,
@@ -429,21 +429,33 @@ def elimination_loop_pairwise(X, y, score_fkt, verbose = 0, only_improve = False
 ########################################
 
 def check_correctness(d, expr_true, expr_sub):
+    """
+    Input:
+        d: dimension of the true expression
+        expr_true: the true expression
+        expr_sub: substitution to be checked
+    """
     
+    # get all indexes that are included in the substitution and should therefore be replaced
     repl_idxs = sorted([int(str(x).split('_')[-1]) for x in expr_sub.free_symbols if 'x_' in str(x)])
+
+    # get the index of the y values (in a joined matrix of X and y)
     y_idx = d
+
     try:
         if y_idx in repl_idxs:
-            # z -> y
+            # in this case, expr_sub is an out-input-substitution
+            # we substitute the true expression for all occurences of y and simplify the result
             z = str(expr_sub).replace(f'x_{y_idx}', f'({str(expr_true)})')
             z = sympy.sympify(z)
             z = utils.simplify(z)
 
-            # if this passes, its correct
+            # check if the simplified substitution does not depend on any repl_idxs anymore
+            # if this passes, the substitution is correct
             for s in z.free_symbols:
                 assert int(str(s).split('_')[-1]) not in repl_idxs
 
-            # create new expression
+            # create new expression (give new indexes to the variables to ensure progressive numbering)
             remain_idxs = sorted([i for i in range(d) if i not in repl_idxs])
             expr_new = str(z).replace('x_', 'z_')
             for i, idx in enumerate(remain_idxs):
@@ -451,17 +463,20 @@ def check_correctness(d, expr_true, expr_sub):
             expr_new = sympy.sympify(expr_new)
         
         else:
-            # z -> x_0
+            # expr_sub is an input substitution
+            # we first solve the substitution for one of its symbols
             z_symb = sympy.Symbol('z')
             repl_symb = list(expr_sub.free_symbols)[0]
             res = sympy.solve(expr_sub - z_symb, repl_symb)
             assert len(res) == 1
 
+            # now, we replace all occurences of this symbol in the true expression by the solved substitution and then simplify
             z = str(expr_true).replace(str(repl_symb), f'({str(res[0])})')
             z = sympy.sympify(z)
             z = utils.simplify(z)
 
-            # if this passes, its correct
+            # check if the result does not depend on any of the variables that appear in the substitution
+            # if this passes, the substitution is correct
             for i in repl_idxs:
                 assert f'x_{i}' not in str(z)
             
