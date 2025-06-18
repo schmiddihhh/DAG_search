@@ -1,98 +1,149 @@
-import sympy
-from DAG_search import utils
+from __future__ import annotations
+
+import numpy as np
+from sklearn.neighbors import NearestNeighbors
+
+from DAG_search.comp_graph import CompGraph
 
 
-def check_correctness_partial(d, expr_true, expr_sub, rem_idxs: list[int]):
+class PartialSubstitution:
     """
-    Input:
-        d: dimension of the true expression
-        expr_true: the true expression
-        expr_sub: substitution to be checked
-        rem_idxs: indexes of all symbols that are included in the substitution, but should remain in the true expression
+    Representation of a partial substitution.
+
+    Attributes
+    ----------
+    expression : CompGraph
+        The expression of the substitution, represented by a CompGraph.
+        The variables of the expression should be named x_i, where i is replaced by the according indexes.
+    out_input : bool
+        Determines if the substitution is handled as an input substitution (False) or an out-input substitution (True).
+    removed_vars : list[int]
+        The indices of all variables that should be removed from the dataset when applying the substitution.
+        All indices in this list must appear in the expression too.
+    vars : list[int]
+        The indices of all variables that appear in the expression.
     """
 
-    try:
-        # get the index of the y values (in a joined matrix of X and y)
-        # y should never be a remaining variable of a partial substitution
-        y_idx = d
-        assert y_idx not in rem_idxs, "y is a remaining variable"
+    def __init__(self, expression: CompGraph, out_input: bool, removed_vars: list[int] = None):
+        """
+        Sets the object attributes.
+        For performance reasons, the parameters are not checked for validity.
 
-        # get all indexes that are included in the substitution
-        subs_idxs = sorted([int(str(x).split('_')[-1]) for x in expr_sub.free_symbols if 'x_' in str(x)])
-
-        # check if all "remaining" symbols are actually included in the substitution and then remove them from the list
-        repl_idxs = subs_idxs.copy()
-        try:
-            for rem_idx in rem_idxs:
-                listidx = repl_idxs.index(rem_idx)
-                repl_idxs.pop(listidx)
-        except ValueError:
-            raise AssertionError("a remaining index was missing in the substitution expression")
-        print(f"replacing {repl_idxs}")
-
-        if y_idx in repl_idxs:
-            # in this case, expr_sub is an out-input-substitution
-            print("pOIS")
-            # at least one variable must be removed to reduce the dimension
-            assert len(repl_idxs) >= 1, "not removing enough variables"
-
-            # we substitute the true expression for all occurences of y and simplify the result
-            z = str(expr_sub).replace(f'x_{y_idx}', f'({str(expr_true)})')
-            z = sympy.sympify(z)
-            z = utils.simplify(z)
-
-            # check if the simplified substitution does not depend on any repl_idxs anymore
-            # also check if it still depends on all rem_idxs
-            # if this passes, the substitution is correct
-            free_symbols = z.free_symbols
-            for s in free_symbols:
-                assert int(str(s).split('_')[-1]) not in repl_idxs, "expression still depends on a \"removed\" variable"
-            for rem_idx in rem_idxs:
-                assert f"x_{rem_idx}" in str(z), "expression does not depend on a \"remaining\" variable"
-
-            # create new expression (give new indexes to the variables to ensure progressive numbering)
-            all_remain_idxs = sorted([i for i in range(d) if i not in repl_idxs])
-            expr_new = str(z).replace('x_', 'z_')
-            for i, idx in enumerate(all_remain_idxs):
-                expr_new = expr_new.replace(f'z_{idx}', f'x_{i}')
-            expr_new = sympy.sympify(expr_new)
-        
+        Parameters
+        ----------
+        expression : CompGraph
+        out_input : bool
+        removed_vars : list[int]
+        """
+        self.expression = expression
+        self.out_input = out_input
+        # extract the variable indices from the expression
+        self.vars = sorted([int(str(s).split('_')[-1]) for s in expression.evaluate_symbolic()[0].free_symbols])
+        if removed_vars is not None:
+            self.removed_vars = removed_vars
         else:
-            # expr_sub is an input substitution
-            print("pIS")
-            # at least two variable must be removed to reduce the dimension
-            assert len(repl_idxs) >= 2, "not removing enough variables"
+            self.removed_vars = self.vars
 
-            # we first solve the substitution for one of the symbols that should be replaced
-            z_symb = sympy.Symbol('z')
-            repl_symb = sympy.Symbol(f'x_{repl_idxs[0]}')
-            res = sympy.solve(expr_sub - z_symb, repl_symb)
-            assert len(res) == 1
+    def set_removed_vars(self, removed_vars: list[int]):
+        """
+        Sets self.removed_vars to the given value.
 
-            # now, we replace all occurences of this symbol in the true expression by the solved substitution and then simplify
-            z = str(expr_true).replace(str(repl_symb), f'({str(res[0])})')
-            z = sympy.sympify(z)
-            z = utils.simplify(z)
+        Parameters
+        ----------
+        removed_vars : list[int]
+            Value that is assigned to self.removed_vars.
+        """
+        self.removed_vars = removed_vars
 
-            # check if the result does not depend on any of the variables that should be replaced
-            # if this passes, the substitution is correct
-            for i in repl_idxs:
-                assert f'x_{i}' not in str(z), "expression still depends on a \"removed\" variable"
-            for rem_idx in rem_idxs:
-                assert f"x_{rem_idx}" in str(z), "expression does not depend on a \"remaining\" variable"
-            
-            
-            # create new expression
-            # replace z with z_-1, all others with z_i
-            z = z.subs(z_symb, sympy.Symbol('x_-1'))
-            all_remain_idxs = sorted([int(str(s).split('_')[-1]) for s in z.free_symbols])
-            expr_new = str(z).replace('x_', 'z_')
-            for i, idx in enumerate(all_remain_idxs):
-                expr_new = expr_new.replace(f'z_{idx}', f'x_{i}')
-            expr_new = sympy.sympify(expr_new)
-            
-    except AssertionError as e:
-        print(e)
-        return (False, None)
+    def apply(self, Xy: np.ndarray) -> np.ndarray:
+        """
+        Applies this substitution to the given dataset and returns the resulting dataset.
+
+        Parameters
+        ----------
+        Xy : np.ndarray
+            The dataset this substitution should be applied on.
+        """
+        # calculate the substitution value for each data point
+        fx = self.expression.evaluate(Xy, c = np.array([]))
+        if not np.all(np.isfinite(fx)):
+            raise ValueError("The application of the substitution on the dataset lead to non-finite results.")
+
+        # add the results to the dataset
+        if self.out_input:
+            # out-input substitution with a new y - replace the old y column with the new one
+            Xy_new = np.column_stack([Xy[:, i] for i in range(Xy.shape[1] - 1) if i not in self.removed_vars] + [fx])
+        else:
+            # input substitution - insert the new variable to the first column
+            Xy_new = np.column_stack([fx] + [Xy[:, i] for i in range(Xy.shape[1]) if i not in self.removed_vars])
+
+        return Xy_new
     
-    return (True, expr_new)
+    def __repr__(self):
+        try:
+            return str(f"{self.expression.evaluate_symbolic()[0]} [{self.removed_vars}]")
+        except:
+            return str("[non-evaluable pS]")
+        
+    def __str__(self):
+        return self.__repr__()
+    
+
+# def translate_back(expr, transl_dict):
+#     '''
+#     Given an expression and a translation dict, reconstructs the original expression.
+
+#     @Params:
+#         expr... sympy expression
+#         transl_dict... translation dictionary, 
+#     '''
+#     if len(transl_dict) == 0:
+#         return expr
+
+#     idxs = sorted([int(str(x).split('_')[-1]) for x in expr.free_symbols if 'x_' in str(x)])
+#     x_expr = str(expr).replace('x_', 'z_')
+#     for i in idxs:
+#         x_expr = x_expr.replace(f'z_{i}', f'({transl_dict[i]})')
+#     y_expr = transl_dict[len(transl_dict) - 1]
+#     total_expr = f'g - ({y_expr})' # g is placeholder for rest of expression
+#     total_expr = sympy.sympify(total_expr)
+
+#     y_symb = sympy.Symbol('y')
+#     res = sympy.solve(total_expr, y_symb)
+#     assert len(res) > 0
+#     return [sympy.sympify(str(r).replace('g', f'({x_expr})')) for r in res]
+
+
+def codec_coefficient(X: np.ndarray, y: np.ndarray, k: int = 1, normalize: bool = True):
+    """
+    Calculates the CODEC coefficient that is used as a loss function for partial substitutions.
+
+    The CODEC coefficient turns out a value between 0 and 1, indicating how strong the functional
+        dependency between features and labels is. Here, it is used as a heuristic measure
+        for the quality of partial substitutions in the search algorithm.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Matrix of features.
+    y : np.ndarray
+        Vector of labels.
+    k : int
+    normalize : bool
+    """
+
+    if normalize:
+        z = (X - np.mean(X, axis = 0))/np.std(X, axis = 0)
+    else:
+        z = X
+    n = y.shape[0]
+    
+    r = y.argsort().argsort()
+    l = n - r - 1
+    denom = np.sum(l * (n-l))
+
+    neigh = NearestNeighbors(n_neighbors= k+1 ).fit(z)
+    nn = neigh.kneighbors(z, return_distance = False)
+    
+    num = np.sum(n * np.min(r[nn], axis = 1) - l**2)
+    return 1- num/denom

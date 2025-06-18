@@ -593,3 +593,23 @@ def expr_edit_distance(expr1, expr2):
     tree1 = expr2tree(expr1)
     tree2 = expr2tree(expr2)
     return zss.simple_distance(tree1, tree2)
+
+
+# New utils for Partial Substitutions
+
+def subsets(full_set: list[int], minsize: int = 0, maxsize: int = None):
+    """
+    Returns all subsets (sublists) of full_set that have a length of at least min_size.
+    """
+
+    if maxsize is None:
+        maxsize = len(full_set)
+
+    if not full_set and minsize <= 0 and maxsize >= 0:
+        yield []
+    else:
+        for subset in subsets(full_set[1:]):
+            if len(subset) >= minsize and len(subset) <= maxsize:
+                yield subset
+            if len(subset) + 1 >= minsize and len(subset) + 1 <= maxsize:
+                yield [full_set[0]] + subset

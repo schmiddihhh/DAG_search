@@ -18,6 +18,7 @@ from DAG_search import comp_graph
 ########################################
 
 def codec_coefficient(X, y, k = 1, normalize = True):
+
     if normalize:
         z = (X - np.mean(X, axis = 0))/np.std(X, axis = 0)
     else:
@@ -140,18 +141,28 @@ class Dimensional_Loss_Fkt(dag_search.DAG_Loss_fkt):
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+
+            # calculate the substitution values for each row of the data matrix
             fx = cgraph.evaluate(X, c = np.array([]))
+
             if np.all(np.isfinite(fx)) and np.all(np.abs(fx) < 1e5):
+
+                # get the symbolic representation of the DAG and the indexes of the variables
                 expr = cgraph.evaluate_symbolic()[0]
                 idxs = sorted([int(str(s).split('_')[-1]) for s in expr.free_symbols])
 
                 if X.shape[1]-1 in idxs and self.only_input:
+                    # y is included in the DAG inputs even though it's input only
                     loss = np.inf
+                
                 elif len(idxs) > 1 and len(idxs) < X.shape[1]:
+                    # the DAG has more than one input variable and not more than the data matrix
+                    # calculate the new data matrix and the corresponding loss
                     if X.shape[1]-1 in idxs:
-                        # we have a new y
+                        # out-input substitution with a new y
                         new_X = np.column_stack([X[:, i] for i in range(X.shape[1]) if i not in idxs] + [fx])
                     else:
+                        # input substitution - new variable is inserted in the first column
                         new_X = np.column_stack([fx] + [X[:, i] for i in range(X.shape[1]) if i not in idxs])
                     try:
                         loss = self.score_func(new_X[:, :-1], new_X[:, -1])
