@@ -5,7 +5,7 @@ import utils
 import sympy
 
 
-def check_correctness_partial(expr_true: sympy.Expr, substitution: PartialSubstitution) -> tuple[bool, sympy.Expr]:
+def check_correctness_partial(expr_true: sympy.Expr, substitution: PartialSubstitution, verbose: int = 0) -> tuple[bool, sympy.Expr]:
     """
     Input:
         d: dimension of the true expression
@@ -37,7 +37,8 @@ def check_correctness_partial(expr_true: sympy.Expr, substitution: PartialSubsti
     try:
         if y_idx in removed_idxs:
             # in this case, expr_sub is an out-input-substitution
-            print("pOIS")
+            if verbose >= 2:
+                print("pOIS")
             # at least two variables must be removed to reduce the dimension
             if not len(removed_idxs) >= 2:
                 # at least one more variable besides y must be removed
@@ -70,7 +71,8 @@ def check_correctness_partial(expr_true: sympy.Expr, substitution: PartialSubsti
         
         else:
             # expr_sub is an input substitution
-            print(f"checking correctness of pIS {substitution}")
+            if verbose >= 2:
+                print(f"checking correctness of pIS {substitution}")
             # at least two variable must be removed to reduce the dimension
             if not len(removed_idxs) >= 2:
                 # at least two variables must be removed
@@ -90,7 +92,8 @@ def check_correctness_partial(expr_true: sympy.Expr, substitution: PartialSubsti
                 # the substitution couldn't be solved for one of its variables
                 # as a fallback, we check if the substitution is a subexpression of the formula
                 if str(expr_sub) in str(expr_true):
-                    print("substitution is subexpression")
+                    if verbose >= 2:
+                        print("substitution is subexpression")
                     expr_new = str(expr_true).replace(str(expr_sub), "z")
                     expr_new = sympy.sympify(expr_new)
                 else:

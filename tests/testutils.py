@@ -6,7 +6,7 @@ import random as rnd
 
 def get_equation(index: int) -> tuple[str, list[tuple[float, float]]]:
 
-    print(f"Extracting the {index} th equation with its variable ranges from the dataset")
+    #print(f"Extracting the {index} th equation with its variable ranges from the dataset")
 
     # extract the equation from the dataset
     df = pd.read_csv("~/Uni/ba/datasets/train.csv")

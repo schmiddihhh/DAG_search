@@ -28,7 +28,7 @@ def reduction_rate(best_substitution: SubNode) -> float:
 
     return 1.0 - (dimension_subproblem / dimension_original)
 
-def avg_reduction_rate(formulas: list[str], ranges: list[list[tuple[float, float]]], n_datapoints: int = 1000, verbose: int = 0):
+def avg_reduction_rate(formulas: list[str], ranges: list[list[tuple[float, float]]], only_complete_subs: bool, k: int = 1, n_datapoints: int = 1000, verbose: int = 0):
     """
     Calculates the reduction rate for a list of formulas and returns the average reduction rate.
 
@@ -71,7 +71,7 @@ def avg_reduction_rate(formulas: list[str], ranges: list[list[tuple[float, float
         (X, y) = gen_dataset(formula, var_ranges, n_datapoints)
 
         # find the best substitutions
-        best_substitutions = substitution_loop(X, y, codec_coefficient, verbose=verbose)
+        best_substitutions = substitution_loop(X, y, codec_coefficient, k=k, verbose=verbose, only_complete_subs=only_complete_subs)
         best_substitution = best_substitutions.best_substitution()
 
         # get the last correct substitution in the path

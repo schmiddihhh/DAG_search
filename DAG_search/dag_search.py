@@ -607,7 +607,7 @@ def get_build_orders(m:int, n:int, k:int, n_calc_nodes:int, max_orders:int = 100
     if filter_func is None:
         filter_func = lambda orders : orders
 
-    if verbose > 0:
+    if verbose >= 2:
         print('Creating evaluation orders')
     l = n_calc_nodes
     inp_nodes = [i for i in range(m + k)]
@@ -1549,7 +1549,7 @@ def exhaustive_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, n_
     #orders = get_build_orders(m, n, k, n_calc_nodes, max_orders = max_orders, verbose=verbose)
     orders = order_gen(m, n, k, n_calc_nodes, max_orders = max_orders, verbose=verbose)
 
-    if verbose > 0:
+    if verbose >= 2:
         print(f'Total orders: {len(orders)}')
         print('Evaluating orders')
 
@@ -1643,7 +1643,7 @@ def exhaustive_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, n_
         with ctx.Pool(processes=n_processes, initializer=init_process, initargs=(early_stop,)) as pool:
             pool_results = pool.starmap(evaluate_build_order, pbar)
         
-        if verbose > 0:
+        if verbose >= 2:
             print('Collecting results')
         for i, (consts, losses, ops) in enumerate(pool_results):
             if early_stop:
@@ -1757,7 +1757,7 @@ def sample_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, n_calc
     m = X.shape[1]
     n = n_outps
 
-    if verbose > 0:
+    if verbose >= 2:
         print('Generating graphs')
     if verbose == 2:
         pbar = tqdm(range(n_samples))
@@ -1769,7 +1769,7 @@ def sample_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, n_calc
         cgraph = sample_graph(m, n, k, n_calc_nodes)
         cgraphs.append(cgraph.copy())
 
-    if verbose > 0:
+    if verbose >= 2:
         print('Evaluating graphs')
 
     top_losses = []
@@ -1950,7 +1950,7 @@ def hierarchical_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, 
         if setup_time >= max_time:
             break
 
-        if verbose > 0:
+        if verbose >= 2:
             print('#########################')
             print(f'# Calc Nodes: {calc_nodes}')
             print('#########################')
@@ -1958,7 +1958,7 @@ def hierarchical_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, 
         # collect computational graphs (no operations on nodes yet)
         orders = get_build_orders(m, n, k, calc_nodes, max_orders = max_orders, verbose=verbose, fix_size=True)
 
-        if verbose > 0:
+        if verbose >= 2:
             print(f'Total orders: {len(orders)}')
             print('Evaluating orders')
 
@@ -2115,7 +2115,7 @@ def hierarchical_search(X:np.ndarray, n_outps: int, loss_fkt: callable, k: int, 
             top_graphs.append(cgraph.copy())
 
         if top_losses[0] <= stop_thresh or np.any(np.array(top_losses) <= hierarchy_stop_thresh):
-            if verbose > 0:
+            if verbose >= 2:
                 print(f'Stopping because early stop criteria has been matched!')
             break
     ret['graphs'] = top_graphs
@@ -2233,7 +2233,7 @@ class DAGRegressor(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
 
         if len(res['graphs']) > 0:
             # optimizing constants of top DAGs
-            if verbose > 0:
+            if verbose >= 2:
                 print('Optimizing best constants')
             loss_fkt = self.loss_fkt(y.reshape(-1, 1))
             losses = []
@@ -2243,7 +2243,7 @@ class DAGRegressor(sklearn.base.BaseEstimator, sklearn.base.RegressorMixin):
                 losses.append(loss)
                 consts.append(new_c)
             best_idx = np.argmin(losses)
-            if verbose > 0:
+            if verbose >= 2:
                 print(f'Found graph with loss {losses[best_idx]}')
 
             

@@ -241,7 +241,7 @@ class Memory_Loss_Fkt(DAG_Loss_fkt):
     Loss function that memorizes all substitutions it scored.
     """
 
-    def __init__(self, score_func, root_node: SubNode, beam_len : int = 5):
+    def __init__(self, score_func, only_complete_subs: bool, root_node: SubNode, beam_len : int = 5):
         '''
         Loss function that scores partial substitutions on a dataset.
 
@@ -251,6 +251,7 @@ class Memory_Loss_Fkt(DAG_Loss_fkt):
         super().__init__()
         self.score_func = score_func
         self.best_substitutions: SubDict = SubDict(beam_len, root_node)
+        self.only_complete_subs = only_complete_subs
         
         
     def __call__(self, Xy:np.ndarray, substitution:CompGraph, c: np.ndarray):
@@ -297,24 +298,34 @@ class Memory_Loss_Fkt(DAG_Loss_fkt):
                 # init the substitution object
                 partial_substitution = PartialSubstitution(substitution, out_input)
                 
-                if var_count > 1 and var_count < Xy.shape[1]:   # the DAG has more than one input variable and not more than the data matrix
-                    for removed_vars in subsets(idxs, minsize=2):
-                        # calculate the loss of the substitution
-                        partial_substitution.set_removed_vars(removed_vars)
+                if 1 < var_count < Xy.shape[1]:   # the DAG has more than one input variable and not more than the data matrix
+                    if self.only_complete_subs:
                         Xy_new = partial_substitution.apply(Xy)
+                        # calculate the loss of the substitution
                         loss = self.score_func(Xy_new[:, :-1], Xy_new[:, -1])
                         # insert the substitution into the BeamDict
                         dimension_new = Xy_new.shape[1] - 1
                         self.best_substitutions.insert(dimension_new, deepcopy(partial_substitution), loss)
                         # get the minimal loss of all tested substitutions (as the return value of this function)
                         min_loss = min(min_loss, loss)
+                    else:
+                        for removed_vars in subsets(idxs, minsize=2):
+                            # calculate the loss of the substitution
+                            partial_substitution.set_removed_vars(removed_vars)
+                            Xy_new = partial_substitution.apply(Xy)
+                            loss = self.score_func(Xy_new[:, :-1], Xy_new[:, -1])
+                            # insert the substitution into the BeamDict
+                            dimension_new = Xy_new.shape[1] - 1
+                            self.best_substitutions.insert(dimension_new, deepcopy(partial_substitution), loss)
+                            # get the minimal loss of all tested substitutions (as the return value of this function)
+                            min_loss = min(min_loss, loss)
         if not vec:
             return min_loss
         else:
             return [min_loss]
         
 
-def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, k: int = 5, verbose: int = 0, substitution_nodes: int = 1) -> SubDict:
+def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, only_complete_subs: bool, k: int = 5, verbose: int = 0, substitution_nodes: int = 1) -> SubDict:
     """
     Searches over all DAGs up to the given size (substitution nodes) to find the best scoring substitutions for the given dataset.
 
@@ -335,7 +346,7 @@ def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, k: int = 
     """
 
     # define the loss function that also contains a store for the best substitutions
-    loss_fkt = Memory_Loss_Fkt(score_fkt, root_node, k)
+    loss_fkt = Memory_Loss_Fkt(score_fkt, only_complete_subs, root_node, k)
 
     # search over all substitutions with a certain size
     # the results are stored in the loss function
@@ -356,7 +367,7 @@ def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, k: int = 
     return loss_fkt.best_substitutions
 
 
-def substitution_loop(X: np.ndarray, y: np.ndarray, score_fkt, k: int = 5, verbose: int = 0, substitution_nodes: int = 1) -> SubBeamTree:
+def substitution_loop(X: np.ndarray, y: np.ndarray, score_fkt, k: int = 5, verbose: int = 0, substitution_nodes: int = 1, only_complete_subs: bool = False) -> SubBeamTree:
     
 
     # get the data for the root problem
@@ -375,19 +386,19 @@ def substitution_loop(X: np.ndarray, y: np.ndarray, score_fkt, k: int = 5, verbo
             parent_Xy = parent_node.dataset_after
 
             # this executes the search and gives us a dictionary with the top k found substitutions per target dimension
-            topk_subdict = top_k_substitutions(parent_Xy, score_fkt, parent_node, k, verbose, substitution_nodes)
+            topk_subdict = top_k_substitutions(parent_Xy, score_fkt, parent_node, only_complete_subs, k, verbose, substitution_nodes)
 
             # get the k best substitutions for each target dimension that was covered in the search
             # insert these into the overall beams
-            print("adding new elements to the beam")
             best_substitutions.merge(topk_subdict)
 
         # prepare for the next iteration: reduce dimension by 1
         dimension -= 1
 
-        print(f"\nNew iteration completed (new dimension: {dimension}):")
-        for substitution in best_substitutions.get_elements(dimension):
-            print(substitution)
-        print()
+        if verbose >= 2:
+            print(f"\nNew iteration completed (new dimension: {dimension}):")
+            for substitution in best_substitutions.get_elements(dimension):
+                print(substitution)
+            print()
 
     return best_substitutions

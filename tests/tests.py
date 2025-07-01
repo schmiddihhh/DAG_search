@@ -164,11 +164,32 @@ def avg_reduction_test():
     formulas = []
     ranges = []
 
-    for i in range(252, 270):
-        (formula, var_ranges) = get_equation(i)
-        formulas.append(formula)
-        ranges.append(var_ranges)
+    test = (245, 246)
+    feynman = (244, 374)
+    eponymous = (33, 244)
 
-    avg_reduction = avg_reduction_rate(formulas, ranges, n_datapoints=1000, verbose=2)
+    intervals = [(test, 2),
+                 (feynman, 1),
+                 (eponymous, 1)]
 
-    print(f"RESULT: {avg_reduction}")
+    for (interval, verbose) in intervals:
+
+        print("\n-------------------- NEW SECTION --------------------")
+
+        print("\nextracting formulas")
+        for i in range(interval[0], interval[1]):
+            (formula, var_ranges) = get_equation(i)
+            formulas.append(formula)
+            ranges.append(var_ranges)
+
+        print("\ncalculating reduction rate with only complete substitutions")
+
+        avg_reduction = avg_reduction_rate(formulas, ranges, only_complete_subs=True, n_datapoints=1000, verbose=verbose)
+
+        print(f"\nRESULT complete subs: {avg_reduction}")
+
+        print("\ncalculating reduction rate with partial substitutions")
+
+        avg_reduction = avg_reduction_rate(formulas, ranges, only_complete_subs=False, n_datapoints=1000, verbose=verbose)
+
+        print(f"\nRESULT partial subs: {avg_reduction}")
