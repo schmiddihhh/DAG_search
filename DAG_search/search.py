@@ -186,6 +186,18 @@ class SubDict:
         """
         self.dict[dimension].insert(substitution, loss)
 
+    def min_loss(self, dimension: int) -> float:
+        """
+        Returns the best (lowest) loss that was achieved in the given dimension.
+
+        Parameters
+        ----------
+        dimension : int
+            Target dimension of the substitutions that are included.
+        """
+        print([loss for loss, _ in self.dict[dimension].loss_element_list()])
+        return min([loss for loss, _ in self.dict[dimension].loss_element_list()]) 
+
 
 class SubBeamTree:
     """
@@ -346,9 +358,9 @@ def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, only_comp
     """
 
     # define the loss function that also contains a store for the best substitutions
-    loss_fkt = Memory_Loss_Fkt(score_fkt, only_complete_subs, root_node, k)
+    loss_fkt = Memory_Loss_Fkt(score_fkt, True, root_node, k)
 
-    # search over all substitutions with a certain size
+    # search over all complete substitutions with a certain size
     # the results are stored in the loss function
     params = {
         'X' : Xy,
@@ -363,6 +375,28 @@ def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, only_comp
         'stop_thresh' : 1e-30
     }
     exhaustive_search(**params)
+
+    prev_dimension = root_node.dimension
+    min_loss = loss_fkt.best_substitutions.min_loss(prev_dimension - 1)
+
+    if not only_complete_subs and min_loss < root_node.loss:
+        # try again with partial substitutions
+        loss_fkt_2 = Memory_Loss_Fkt(score_fkt, False, root_node, k)
+        params = {
+            'X' : Xy,
+            'n_outps' : 1,
+            'loss_fkt' : loss_fkt,
+            'k' : 0,
+            'n_calc_nodes' : substitution_nodes,
+            'n_processes' : 1,
+            'topk' : 1,
+            'verbose' : verbose,
+            'max_orders' : 10000, 
+            'stop_thresh' : 1e-30
+        }
+        exhaustive_search(**params)
+
+        return loss_fkt_2.best_substitutions
 
     return loss_fkt.best_substitutions
 
