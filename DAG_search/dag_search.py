@@ -607,7 +607,7 @@ def get_build_orders(m:int, n:int, k:int, n_calc_nodes:int, max_orders:int = 100
     if filter_func is None:
         filter_func = lambda orders : orders
 
-    if verbose >= 2:
+    if verbose >= 3:
         print('Creating evaluation orders')
     l = n_calc_nodes
     inp_nodes = [i for i in range(m + k)]
@@ -655,7 +655,7 @@ def get_build_orders(m:int, n:int, k:int, n_calc_nodes:int, max_orders:int = 100
     valid_set = set()
     build_orders = []
 
-    if verbose == 2:
+    if verbose >= 3:
         total_its = np.prod([len(s) for s in sample_space_edges])
         pbar = tqdm(possible_edges, total = total_its)
     else: 

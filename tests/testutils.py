@@ -24,14 +24,15 @@ def get_equation(index: int) -> tuple[str, list[tuple[float, float]]]:
 
     return (equation, partial_ranges)
 
-def gen_dataset(equation: str, var_ranges: list[tuple[int, int]], sample_size: int, seed: int = None) -> tuple[np.ndarray, np.ndarray]:
+def gen_dataset(equation: str, var_ranges: list[tuple[int, int]], sample_size: int, seed: int = None, verbose: int = 0) -> tuple[np.ndarray, np.ndarray]:
 
     # convert the equation into a sympy expression
     expression: sympy.Expr = sympy.sympify(equation)
     free_variables: set = sorted(expression.free_symbols, key=lambda s: s.name)
     f = sympy.lambdify(free_variables, expression)
 
-    print(f"Generating {sample_size} data points for equation {equation} with variables {free_variables}")
+    if verbose >= 1:
+        print(f"Generating {sample_size} data points for equation {equation} with variables {free_variables}")
 
     # check if the free variable count matches the range count
     assert(len(free_variables) == len(var_ranges))
@@ -54,6 +55,9 @@ def gen_dataset(equation: str, var_ranges: list[tuple[int, int]], sample_size: i
 
     X = np.array(X)
     y = np.array(y)
+
+    if not (np.all(np.isfinite(X)) and np.all(np.isfinite(y))):
+        print("ALAAAAARM: generated dataset contains non-finite values")
 
     return (X, y)
 

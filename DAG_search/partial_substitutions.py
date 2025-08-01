@@ -43,6 +43,7 @@ class PartialSubstitution:
             self.removed_vars = removed_vars
         else:
             self.removed_vars = self.vars
+        self.fx = None
 
     def set_removed_vars(self, removed_vars: list[int]):
         """
@@ -55,6 +56,10 @@ class PartialSubstitution:
         """
         self.removed_vars = removed_vars
 
+    def calc_fx(self, Xy: np.ndarray):
+        if self.fx is None:
+            self.fx = self.expression.evaluate(Xy, c = np.array([]))
+
     def apply(self, Xy: np.ndarray) -> np.ndarray:
         """
         Applies this substitution to the given dataset and returns the resulting dataset.
@@ -64,18 +69,17 @@ class PartialSubstitution:
         Xy : np.ndarray
             The dataset this substitution should be applied on.
         """
-        # calculate the substitution value for each data point
-        fx = self.expression.evaluate(Xy, c = np.array([]))
-        if not np.all(np.isfinite(fx)):
-            raise ValueError("The application of the substitution on the dataset lead to non-finite results.")
+
+        if self.fx is None:
+            raise RuntimeError("self.fx is not initialized")
 
         # add the results to the dataset
         if self.out_input:
             # out-input substitution with a new y - replace the old y column with the new one
-            Xy_new = np.column_stack([Xy[:, i] for i in range(Xy.shape[1] - 1) if i not in self.removed_vars] + [fx])
+            Xy_new = np.column_stack([Xy[:, i] for i in range(Xy.shape[1] - 1) if i not in self.removed_vars] + [self.fx])
         else:
             # input substitution - insert the new variable to the first column
-            Xy_new = np.column_stack([fx] + [Xy[:, i] for i in range(Xy.shape[1]) if i not in self.removed_vars])
+            Xy_new = np.column_stack([self.fx] + [Xy[:, i] for i in range(Xy.shape[1]) if i not in self.removed_vars])
 
         return Xy_new
     
@@ -133,7 +137,9 @@ def codec_coefficient(X: np.ndarray, y: np.ndarray, k: int = 1, normalize: bool 
     """
 
     if normalize:
-        z = (X - np.mean(X, axis = 0))/np.std(X, axis = 0)
+        deviation = np.std(X, axis = 0)
+        deviation[deviation == 0] = 1
+        z = (X - np.mean(X, axis = 0))/deviation
     else:
         z = X
     n = y.shape[0]

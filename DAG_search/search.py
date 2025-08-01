@@ -195,7 +195,7 @@ class SubDict:
         dimension : int
             Target dimension of the substitutions that are included.
         """
-        print([loss for loss, _ in self.dict[dimension].loss_element_list()])
+        # print([loss for loss, _ in self.dict[dimension].loss_element_list()])
         return min([loss for loss, _ in self.dict[dimension].loss_element_list()]) 
 
 
@@ -264,6 +264,7 @@ class Memory_Loss_Fkt(DAG_Loss_fkt):
         self.score_func = score_func
         self.best_substitutions: SubDict = SubDict(beam_len, root_node)
         self.only_complete_subs = only_complete_subs
+        self.total_scored_substitutions = 0
         
         
     def __call__(self, Xy:np.ndarray, substitution:CompGraph, c: np.ndarray):
@@ -295,20 +296,18 @@ class Memory_Loss_Fkt(DAG_Loss_fkt):
             else:
                 vec = False
 
-            # calculate the substitution values for each row of the data matrix
-            fx = substitution.evaluate(Xy, c = np.array([]))
+            # get some info about the substitution
+            expr = substitution.evaluate_symbolic()[0]
+            idxs = sorted([int(str(s).split('_')[-1]) for s in expr.free_symbols])
+            var_count = len(idxs)   # number of vars in the substitution
+            current_dimension = Xy.shape[1] - 1
+            out_input = (current_dimension in idxs) # determines if this is an out-input substitution
 
-            if np.all(np.isfinite(fx)) and np.all(np.abs(fx) < 1e5):
+            # init the substitution object
+            partial_substitution = PartialSubstitution(substitution, out_input)
+            partial_substitution.calc_fx(Xy)
 
-                # get some info about the substitution
-                expr = substitution.evaluate_symbolic()[0]
-                idxs = sorted([int(str(s).split('_')[-1]) for s in expr.free_symbols])
-                var_count = len(idxs)   # number of vars in the substitution
-                current_dimension = Xy.shape[1] - 1
-                out_input = (current_dimension in idxs) # determines if this is an out-input substitution
-
-                # init the substitution object
-                partial_substitution = PartialSubstitution(substitution, out_input)
+            if np.all(np.isfinite(partial_substitution.fx)):
                 
                 if 1 < var_count < Xy.shape[1]:   # the DAG has more than one input variable and not more than the data matrix
                     if self.only_complete_subs:
@@ -318,19 +317,25 @@ class Memory_Loss_Fkt(DAG_Loss_fkt):
                         # insert the substitution into the BeamDict
                         dimension_new = Xy_new.shape[1] - 1
                         self.best_substitutions.insert(dimension_new, deepcopy(partial_substitution), loss)
+                        self.total_scored_substitutions += 1
                         # get the minimal loss of all tested substitutions (as the return value of this function)
                         min_loss = min(min_loss, loss)
                     else:
+                        #print(f"partial and complete subs ({len(idxs)} variables)")
                         for removed_vars in subsets(idxs, minsize=2):
-                            # calculate the loss of the substitution
-                            partial_substitution.set_removed_vars(removed_vars)
-                            Xy_new = partial_substitution.apply(Xy)
-                            loss = self.score_func(Xy_new[:, :-1], Xy_new[:, -1])
-                            # insert the substitution into the BeamDict
-                            dimension_new = Xy_new.shape[1] - 1
-                            self.best_substitutions.insert(dimension_new, deepcopy(partial_substitution), loss)
-                            # get the minimal loss of all tested substitutions (as the return value of this function)
-                            min_loss = min(min_loss, loss)
+                            # TODO: ALAAAAARM - was mit Out-Input-Substitutionen???
+                            #print(f"subset (size {len(removed_vars)})")
+                            if not len(removed_vars) == len(idxs):  # else, the substitution would be a complete substitution
+                                # calculate the loss of the substitution
+                                partial_substitution.set_removed_vars(removed_vars)
+                                Xy_new = partial_substitution.apply(Xy)
+                                loss = self.score_func(Xy_new[:, :-1], Xy_new[:, -1])
+                                # insert the substitution into the BeamDict
+                                dimension_new = Xy_new.shape[1] - 1
+                                self.best_substitutions.insert(dimension_new, deepcopy(partial_substitution), loss)
+                                self.total_scored_substitutions += 1
+                                # get the minimal loss of all tested substitutions (as the return value of this function)
+                                min_loss = min(min_loss, loss)
         if not vec:
             return min_loss
         else:
@@ -376,16 +381,20 @@ def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, only_comp
     }
     exhaustive_search(**params)
 
+    #print(f" - complete substitutions: {loss_fkt.total_scored_substitutions} substitutions checked (best substitutions: {[(dim, beam.element_list()) for (dim, beam) in loss_fkt.best_substitutions.dict.items()]})")
+
     prev_dimension = root_node.dimension
     min_loss = loss_fkt.best_substitutions.min_loss(prev_dimension - 1)
 
-    if not only_complete_subs and min_loss < root_node.loss:
+    if not only_complete_subs and not min_loss < root_node.loss:
         # try again with partial substitutions
+        if verbose >= 2:
+            print("probiere partielle")
         loss_fkt_2 = Memory_Loss_Fkt(score_fkt, False, root_node, k)
         params = {
             'X' : Xy,
             'n_outps' : 1,
-            'loss_fkt' : loss_fkt,
+            'loss_fkt' : loss_fkt_2,
             'k' : 0,
             'n_calc_nodes' : substitution_nodes,
             'n_processes' : 1,
@@ -395,6 +404,8 @@ def top_k_substitutions(Xy: np.ndarray, score_fkt, root_node: SubNode, only_comp
             'stop_thresh' : 1e-30
         }
         exhaustive_search(**params)
+
+        #print(f" - partial substitutions: {loss_fkt_2.total_scored_substitutions} substitutions checked (best substitutions: {loss_fkt_2.best_substitutions.dict.items()})")
 
         return loss_fkt_2.best_substitutions
 

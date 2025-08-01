@@ -246,7 +246,7 @@ def beam_elimination_loop(X, y, score_fkt, beam_size = 2, nodes_elim = 1, verbos
         new_beam = []
 
         # print beam
-        if verbose > 0:
+        if verbose >= 1:
             print('Current beam:')
             for X_b, y_b, exprs, score in beam:
                 print(exprs, score)
